@@ -31,8 +31,9 @@ rvm_t rvm_init(const char *directory)
 		PRINT_DEBUG(cmd);
 		system(cmd);
 	}
-
-	rvm_t rvm = new rvm_data(directory);	
+	string log_file = "log";
+	// If one already exists then what?
+	rvm_t rvm = new rvm_data(directory, log_file);	
 	return rvm;
 }
 void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
@@ -42,24 +43,52 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 	it = rvm->segment_map.find(temp);
 	if(it == rvm->segment_map.end())				// Segment doesn't exist. Create and add it
 	{
-		cout<<"Segment doesn't exist"<<endl;
-		//segment_t seg()
+		PRINT_DEBUG("Segment doesn't exist. Creating new.");
+		segment_t seg;
+		seg.address = operator new(size_to_create);
+		seg.size = size_to_create;
+		seg.is_mapped = 1;
+		rvm->segment_map[temp] = seg;
+		return seg.address;
 	}
-	else										// Segment exists
+	else											// Segment exists
 	{
-		if(it->second.is_mapped)				// Segment is already mapped. Return error
+		if(it->second.is_mapped)					// Segment is already mapped. Return error
 		{
-			cout<<"Is already mapped"<<endl;
+			PRINT_DEBUG("Segment is already mapped. Returning NULL");
 			return NULL;
 		}
-		// Add code here - segment exists but is not mapped
+		// Add code here - segment exists but is not mapped. Maybe create an undo record?
+		if(it->second.size < size_to_create)
+		{
+			// If the segment exists but is shorter than size_to_create, then extend it until it is long enough
+			
+			//copy the old value. 
+			PRINT_DEBUG("Changing size");
+			operator delete(it->second.address); 
+			void *address = operator new(size_to_create);
+			it->second.address = address;
+			it->second.size = size_to_create;
+			it->second.is_mapped = 1;
+		}
+		else
+		{
+			// copy the old value. 
+			it->second.is_mapped = 1;
+		}
 	}
-	return NULL;
+	return rvm->segment_map[temp].address;
 }
-void rvm_unmap(rvm_t rvm, void *segbase);
+void rvm_unmap(rvm_t rvm, void *segbase)
+{
+
+}
 void rvm_destroy(rvm_t rvm, const char *segname);
 trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases);
-void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size);
+void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
+{
+	// Check if it is mapped
+}
 void rvm_commit_trans(trans_t tid);
 void rvm_abort_trans(trans_t tid);
 void rvm_truncate_log(rvm_t rvm);
@@ -68,13 +97,12 @@ int main()
 {
 	rvm_t rvm = rvm_init("hi");
 	cout<<"RVM INITIALIZED:"<<rvm->path<<endl;
-	rvm_map(rvm, "hi1", 100);
-	char *blah = new char(10);
-	segment_t seg((void*) blah, 10);
-	seg.is_mapped = 1;
-	rvm->segment_map["hi1"] = seg;
-	// // cout<<"Size is "<<rvm.segment_map.size()<<endl;
-	cout<<rvm->segment_map["hi1"].address<<endl;
-	rvm_map(rvm, "hi1", 10);
+	char *seg_ch = (char*) rvm_map(rvm, "hi1", 100);
+	cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
+	printf("%p\n", seg_ch);
+	rvm->segment_map["hi1"].is_mapped = 0;
+	seg_ch = (char*) rvm_map(rvm, "hi1", 1000);
+	cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
+	printf("%p\n", seg_ch);
 	return 0;
 }
