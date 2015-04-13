@@ -27,13 +27,11 @@ typedef struct segment
 typedef struct rvm
 {
 	string path;
-	string log_file;
 	map<string, segment_t> segment_map;
 
-	rvm(const char *directory, string file_name)
+	rvm(const char *directory)
 	{
 		path = directory;
-		log_file = file_name;
 	}
 
 } rvm_data;

@@ -31,11 +31,11 @@ rvm_t rvm_init(const char *directory)
 		PRINT_DEBUG(cmd);
 		system(cmd);
 	}
-	string log_file = "log";
-	// If one already exists then what?
-	rvm_t rvm = new rvm_data(directory, log_file);	
+
+	rvm_t rvm = new rvm_data(directory);	
 	return rvm;
 }
+
 void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 {
 	map<string, segment_t>::iterator it;
@@ -49,7 +49,6 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 		seg.size = size_to_create;
 		seg.is_mapped = 1;
 		rvm->segment_map[temp] = seg;
-		return seg.address;
 	}
 	else											// Segment exists
 	{
@@ -73,17 +72,62 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 		}
 		else
 		{
-			// copy the old value. 
+			// copy the old value. If the memory has been freed on unmapping, then here we will need to reallocate memory
 			it->second.is_mapped = 1;
 		}
 	}
 	return rvm->segment_map[temp].address;
 }
+
 void rvm_unmap(rvm_t rvm, void *segbase)
 {
-
+	map<string, segment_t>::iterator it;
+	for(it = rvm->segment_map.begin(); it != rvm->segment_map.end(); it++)
+	{
+		if(it->second.address == segbase)
+			break;
+	}
+	if(it->second.address != segbase)		// There is no such segment
+	{
+		// The segment has not been mapped. Abort or something
+		PRINT_DEBUG("The segment to be unmapped does not exist");
+		return;
+	}
+	if(it->second.is_mapped == 0)
+	{
+		PRINT_DEBUG("The segment to be unmapped has not been mapped before.");
+		return;
+	}
+	if(it->second.being_used)				// The segment is being modified
+	{
+		// The segment is in use. Do something
+		PRINT_DEBUG("The segment to be unmapped is in use.");
+		return;
+	}
+	// Should the memory be freed?
+	PRINT_DEBUG("Unmapping the segment");
+	it->second.is_mapped = 0;
 }
-void rvm_destroy(rvm_t rvm, const char *segname);
+void rvm_destroy(rvm_t rvm, const char *segname)
+{
+	map<string, segment_t>::iterator it;
+	string temp = segname;
+	it = rvm->segment_map.find(temp);
+	if(it == rvm->segment_map.end())		// The segment does not exist
+	{
+		PRINT_DEBUG("The segment to be deleted does not exist");
+		return;
+	}
+	if(it->second.being_used == 1)			// The segment is in use
+	{
+		// WHat should be done here?
+		PRINT_DEBUG("The segment to be destroyed is being used.");
+		return;
+	}
+	operator delete(it->second.address);
+	rvm->segment_map.erase(it);
+}
+
 trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases);
 void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 {
@@ -103,6 +147,14 @@ int main()
 	rvm->segment_map["hi1"].is_mapped = 0;
 	seg_ch = (char*) rvm_map(rvm, "hi1", 1000);
 	cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
+	printf("%p\n", seg_ch);
+	int *seg_int = (int*) rvm_map(rvm, "hi2", 200);
+	float *seg_fl = (float*) rvm_map(rvm, "hi3", 300);
+	rvm_unmap(rvm, seg_ch);
+	seg_ch = (char*) rvm_map(rvm, "hi1", 100);
+	printf("%p\n", seg_ch);
+	rvm_destroy(rvm, "hi1");
+	seg_ch = (char*) rvm_map(rvm, "hi1", 100);
 	printf("%p\n", seg_ch);
 	return 0;
 }
