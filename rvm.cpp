@@ -203,29 +203,88 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 		return;
 	}
 
-	trans_data trans = trans_map[tid];
-
-	if(trans.segments.count(segbase) == 0)					// Segment not selected for this transaction
+	if(trans_map[tid].segments.count(segbase) == 0)					// Segment not selected for this transaction
 	{
 		PRINT_DEBUG("Segment not selected for this transaction");
 		return;
 	}
-	if(offset + size > trans.segments[segbase]->size)		// Outside the range of the segment
+	if(offset + size > trans_map[tid].segments[segbase]->size)		// Outside the range of the segment
 	{
 		PRINT_DEBUG("Outside the range of the segment");
 		return;
 	}
-
 	undo_record_t undo_record;
 	undo_record.offset = offset;
 	undo_record.size = size;
+	undo_record.backup = operator new(size);
 	memcpy(undo_record.backup, segbase + offset, size);
-	//add to list and insert in undo_records map for this tid
-	trans.undo_records[segbase].push_front(undo_record);
+	cout<<"backup is "<<(char*)undo_record.backup<<endl;
+	trans_map[tid].undo_records[segbase].push_front(undo_record);
+	cout<<(char*)trans_map[tid].undo_records[segbase].front().backup<<endl;
 	
 }
-void rvm_commit_trans(trans_t tid);
-void rvm_abort_trans(trans_t tid);
+void rvm_commit_trans(trans_t tid)
+{
+	/*commit all changes that have been made within the specified transaction. 
+	When the call returns, then enough information should have been saved to disk so that, 
+	even if the program crashes, the changes will be seen by the program when it restarts.*/
+
+	if(trans_map.count(tid) == 0)							// Invalid tid
+	{
+		PRINT_DEBUG("Invalid transaction id");
+		return;
+	}
+
+	// Push to disk
+
+	// Remove undo records
+	
+
+	// Remove transaction info
+}
+
+void rvm_abort_trans(trans_t tid)
+{
+	//Remove logs from files also
+
+	PRINT_DEBUG("In abort transaction");
+	if(trans_map.count(tid) == 0)							// Invalid tid
+	{
+		PRINT_DEBUG("Invalid transaction id");
+		return;
+	}
+
+	map<void*, list<undo_record_t> >::iterator it;
+	void *segbase;
+	undo_record_t undo_record;
+	for(it = trans_map[tid].undo_records.begin(); it != trans_map[tid].undo_records.end(); it++)
+	{
+		// Check if this segment has been unmapped? If it has then?
+		segbase = it->first;
+		cout<<"segbase is "<<segbase;
+		while(!it->second.empty())
+		{			
+			undo_record = it->second.front();			
+			memcpy(segbase+undo_record.offset, undo_record.backup, undo_record.size);
+			operator delete(undo_record.backup);
+			it->second.pop_front();
+		}
+		trans_map[tid].undo_records.erase(it);
+	}
+
+	trans_data trans = trans_map[tid];						// Mark all segments unmapped
+	map<void*, segment_t*>::iterator it_seg;
+	for(it_seg = trans.segments.begin(); it_seg != trans.segments.end(); it_seg++)
+	{
+		cout<<trans.segments[it_seg->first]->address<<endl;
+		trans.segments[it_seg->first]->being_used = 0;		// Indicate that the segment is no longer being used
+							
+	}
+	
+	trans_map.erase(tid);									// Remove transaction info
+	cout<<"Exiting abort transaction"<<endl;
+
+}
 void rvm_truncate_log(rvm_t rvm);
 
 int main()
@@ -255,8 +314,15 @@ int main()
 	printf("Segments %p , %p , %p \n", (void*) seg_tr[0], (void*) seg_tr[1], (void*) seg_tr[2]);
 	trans_t tid = rvm_begin_trans(rvm, 3, (void**) seg_tr);
 	cout<<tid<<endl;
-	rvm_about_to_modify(tid, seg_tr[0], 0, 10);
-	
+	strcpy(seg_tr[0], "abcde");
+	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+	rvm_about_to_modify(tid, seg_tr[0], 1, 4);
+	strcpy(seg_tr[0], "blahblah");
+	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+	rvm_abort_trans(tid);
+	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+	trans_t tid2 = rvm_begin_trans(rvm, 2, (void**) seg_tr);	
+	cout<<tid2<<endl;
 	// char *seg_tr2[2];
 	// seg_tr2[0] = (char*) rvm_map(rvm, "SEG3", 100);
 	// seg_tr2[1] = (char*) rvm_map(rvm, "SEG4", 200);
