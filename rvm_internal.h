@@ -1,4 +1,5 @@
 #include <map>
+#include <list>
 #include <string>
 #include <stdio.h>
 
@@ -40,6 +41,17 @@ typedef rvm_data* rvm_t;
 
 typedef struct 
 {
-	int i;
-} trans_t;
+	int offset;
+	int size;
+	void *backup;
+} undo_record_t;
+
+typedef struct 
+{
+	rvm_t rvm;
+	map<void*, segment_t*> segments;
+	map<void*, list<undo_record_t> > undo_records;
+} trans_data;
+
+typedef int trans_t;
 

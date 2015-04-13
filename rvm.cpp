@@ -4,9 +4,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
-#include <stdio.h>
+#include <cstdio>
+#include <time.h>
 
 using namespace std;
+
 
 #define DEBUG 1
 
@@ -15,6 +17,10 @@ using namespace std;
 #else
 #define PRINT_DEBUG(M, ...)
 #endif
+
+#define MAX_TRANS_ID 1000000
+
+map<trans_t, trans_data> trans_map;
 
 rvm_t rvm_init(const char *directory)
 {
@@ -76,6 +82,7 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 			it->second.is_mapped = 1;
 		}
 	}
+	PRINT_DEBUG("EXITING MAP");
 	return rvm->segment_map[temp].address;
 }
 
@@ -118,20 +125,93 @@ void rvm_destroy(rvm_t rvm, const char *segname)
 		PRINT_DEBUG("The segment to be deleted does not exist");
 		return;
 	}
-	if(it->second.being_used == 1)			// The segment is in use
+	if(it->second.is_mapped == 1)			// The segment is currently mapped. 
 	{
-		// WHat should be done here?
+		// WHat should be done here? This function should not be called on a segment that is currently mapped
 		PRINT_DEBUG("The segment to be destroyed is being used.");
 		return;
 	}
+	// Erase the backing store also
 	operator delete(it->second.address);
 	rvm->segment_map.erase(it);
 }
 
-trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases);
+trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases)
+{
+	/* begin a transaction that will modify the segments listed in segbases. 
+	If any of the specified segments is already being modified by a transaction, then the call should fail and return (trans_t) -1. 
+	Note that trant_t needs to be able to be typecasted to an integer type. */
+	// PRINT_DEBUG("In begin transaction");
+	map<string, segment_t>::iterator it;
+	trans_data trans;
+	trans.rvm = rvm;
+	int found;
+	for(int i = 0; i < numsegs; i++)
+	{
+		found = 0;
+		// printf("Looking for segment %p \n", segbases[i]);
+		for(it = rvm->segment_map.begin(); it != rvm->segment_map.end(); it++)
+		{
+			
+			if(it->second.address == segbases[i])
+			{
+				// printf("Found segment %p \n", segbases[i]);
+				found = 1;
+				if(it->second.being_used == 1)					// This segment is being used by another transaction
+				{
+					PRINT_DEBUG("This segment is being used by another transaction");
+					return -1;
+				}
+				if(it->second.is_mapped == 0)					// This segment has not been mapped
+				{
+					PRINT_DEBUG("This segment has not been mapped.");
+					return -1;
+				}
+				trans.segments[segbases[i]] = &(it->second);
+				cout<<"Inserted: "<<trans.segments[segbases[i]]->address<<endl;
+				cout<<"Inserted: "<<trans.segments[segbases[i]]->being_used<<endl;
+			}
+		}
+		if(found == 0)						// This segment does not exist
+		{
+			PRINT_DEBUG("This segment does not exist");
+			return -1;
+		}
+	}
+	// PRINT_DEBUG("All segments OK!");
+	map<void*, segment_t*>::iterator it_seg;
+	for(it_seg = trans.segments.begin(); it_seg != trans.segments.end(); it_seg++)
+	{
+		cout<<trans.segments[it_seg->first]->address<<endl;
+		trans.segments[it_seg->first]->being_used = 1;		// Indicate that the segment is being used
+							
+	}
+	// cout<<"here"<<endl;
+	srand(time(NULL));
+	trans_t trans_id =  rand() % MAX_TRANS_ID;					// Generate new transaction ID
+	while(trans_map.count(trans_id) == 1)
+		trans_id = rand() % MAX_TRANS_ID;
+	trans_map[trans_id] = trans;
+	return trans_id;
+}
 void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 {
-	// Check if it is mapped
+	if(trans_map.count(tid) == 0)							// Invalid tid
+		return;
+
+	trans_data trans = trans_map[tid];
+
+	if(trans.segments.count(segbase) == 0)					// Segment not selected for this transaction
+		return;
+	if(offset + size > trans.segments[segbase]->size)			// Outside the range of the segment
+		return;
+
+	undo_record_t undo_record;
+	undo_record.offset = offset;
+	undo_record.size = size;
+	memcpy(undo_record.backup, segbase + offset, size);
+	//add to list and insert in undo_records map for this tid
+	
 }
 void rvm_commit_trans(trans_t tid);
 void rvm_abort_trans(trans_t tid);
@@ -140,21 +220,35 @@ void rvm_truncate_log(rvm_t rvm);
 int main()
 {
 	rvm_t rvm = rvm_init("hi");
-	cout<<"RVM INITIALIZED:"<<rvm->path<<endl;
-	char *seg_ch = (char*) rvm_map(rvm, "hi1", 100);
-	cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
-	printf("%p\n", seg_ch);
-	rvm->segment_map["hi1"].is_mapped = 0;
-	seg_ch = (char*) rvm_map(rvm, "hi1", 1000);
-	cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
-	printf("%p\n", seg_ch);
-	int *seg_int = (int*) rvm_map(rvm, "hi2", 200);
-	float *seg_fl = (float*) rvm_map(rvm, "hi3", 300);
-	rvm_unmap(rvm, seg_ch);
-	seg_ch = (char*) rvm_map(rvm, "hi1", 100);
-	printf("%p\n", seg_ch);
-	rvm_destroy(rvm, "hi1");
-	seg_ch = (char*) rvm_map(rvm, "hi1", 100);
-	printf("%p\n", seg_ch);
+	// cout<<"RVM INITIALIZED:"<<rvm->path<<endl;
+	// char *seg_ch = (char*) rvm_map(rvm, "hi1", 100);
+	// cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
+	// printf("%p\n", seg_ch);
+	// rvm->segment_map["hi1"].is_mapped = 0;
+	// seg_ch = (char*) rvm_map(rvm, "hi1", 1000);
+	// cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
+	// printf("%p\n", seg_ch);
+	// int *seg_int = (int*) rvm_map(rvm, "hi2", 200);
+	// float *seg_fl = (float*) rvm_map(rvm, "hi3", 300);
+	// rvm_unmap(rvm, seg_ch);
+	// seg_ch = (char*) rvm_map(rvm, "hi1", 100);
+	// printf("%p\n", seg_ch);
+	// rvm_destroy(rvm, "hi1");
+	// seg_ch = (char*) rvm_map(rvm, "hi1", 100);
+	// printf("%p\n", seg_ch);
+
+	char *seg_tr[3];
+	seg_tr[0] = (char*) rvm_map(rvm, "SEG0", 100);
+	seg_tr[1] = (char*) rvm_map(rvm, "SEG1", 200);
+	seg_tr[2] = (char*) rvm_map(rvm, "SEG2", 300);
+	printf("Segments %p , %p , %p \n", (void*) seg_tr[0], (void*) seg_tr[1], (void*) seg_tr[2]);
+	trans_t tid = rvm_begin_trans(rvm, 3, (void**) seg_tr);
+	cout<<tid<<endl;
+	char *seg_tr2[2];
+	seg_tr2[0] = (char*) rvm_map(rvm, "SEG3", 100);
+	seg_tr2[1] = (char*) rvm_map(rvm, "SEG4", 200);
+	trans_t tid2 = rvm_begin_trans(rvm, 2, (void**) seg_tr2);
+	cout<<tid2<<endl;
+
 	return 0;
 }
