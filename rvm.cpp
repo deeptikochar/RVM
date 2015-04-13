@@ -237,10 +237,35 @@ void rvm_commit_trans(trans_t tid)
 
 	// Push to disk
 
-	// Remove undo records
-	
 
+	// Mark all segments unmapped
+	trans_data trans = trans_map[tid];						// Mark all segments unmapped
+	map<void*, segment_t*>::iterator it_seg;
+	for(it_seg = trans.segments.begin(); it_seg != trans.segments.end(); it_seg++)
+	{
+		cout<<trans.segments[it_seg->first]->address<<endl;
+		trans.segments[it_seg->first]->being_used = 0;		// Indicate that the segment is no longer being used
+							
+	}
+
+	// Remove and free undo records
+	map<void*, list<undo_record_t> >::iterator it;
+	void *segbase;
+	undo_record_t undo_record;
+	for(it = trans_map[tid].undo_records.begin(); it != trans_map[tid].undo_records.end(); it++)
+	{
+		segbase = it->first;
+		cout<<"segbase is "<<segbase;
+		while(!it->second.empty())
+		{			
+			undo_record = it->second.front();			
+			operator delete(undo_record.backup);
+			it->second.pop_front();
+		}
+		trans_map[tid].undo_records.erase(it);
+	}
 	// Remove transaction info
+	trans_map.erase(tid);
 }
 
 void rvm_abort_trans(trans_t tid)
@@ -319,8 +344,9 @@ int main()
 	rvm_about_to_modify(tid, seg_tr[0], 1, 4);
 	strcpy(seg_tr[0], "blahblah");
 	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
-	rvm_abort_trans(tid);
-	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+	rvm_commit_trans(tid);
+	// cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+	cout<<"Transaction "<<trans_map.count(tid)<<endl;
 	trans_t tid2 = rvm_begin_trans(rvm, 2, (void**) seg_tr);	
 	cout<<tid2<<endl;
 	// char *seg_tr2[2];
