@@ -196,21 +196,32 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases)
 }
 void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 {
+	PRINT_DEBUG("In about to modify");
 	if(trans_map.count(tid) == 0)							// Invalid tid
+	{
+		PRINT_DEBUG("Invalid transaction id");
 		return;
+	}
 
 	trans_data trans = trans_map[tid];
 
 	if(trans.segments.count(segbase) == 0)					// Segment not selected for this transaction
+	{
+		PRINT_DEBUG("Segment not selected for this transaction");
 		return;
-	if(offset + size > trans.segments[segbase]->size)			// Outside the range of the segment
+	}
+	if(offset + size > trans.segments[segbase]->size)		// Outside the range of the segment
+	{
+		PRINT_DEBUG("Outside the range of the segment");
 		return;
+	}
 
 	undo_record_t undo_record;
 	undo_record.offset = offset;
 	undo_record.size = size;
 	memcpy(undo_record.backup, segbase + offset, size);
 	//add to list and insert in undo_records map for this tid
+	trans.undo_records[segbase].push_front(undo_record);
 	
 }
 void rvm_commit_trans(trans_t tid);
@@ -244,11 +255,13 @@ int main()
 	printf("Segments %p , %p , %p \n", (void*) seg_tr[0], (void*) seg_tr[1], (void*) seg_tr[2]);
 	trans_t tid = rvm_begin_trans(rvm, 3, (void**) seg_tr);
 	cout<<tid<<endl;
-	char *seg_tr2[2];
-	seg_tr2[0] = (char*) rvm_map(rvm, "SEG3", 100);
-	seg_tr2[1] = (char*) rvm_map(rvm, "SEG4", 200);
-	trans_t tid2 = rvm_begin_trans(rvm, 2, (void**) seg_tr2);
-	cout<<tid2<<endl;
+	rvm_about_to_modify(tid, seg_tr[0], 0, 10);
+	
+	// char *seg_tr2[2];
+	// seg_tr2[0] = (char*) rvm_map(rvm, "SEG3", 100);
+	// seg_tr2[1] = (char*) rvm_map(rvm, "SEG4", 200);
+	// trans_t tid2 = rvm_begin_trans(rvm, 2, (void**) seg_tr2);
+	// cout<<tid2<<endl;
 
 	return 0;
 }
