@@ -34,7 +34,6 @@ typedef struct rvm
 	{
 		path = directory;
 	}
-
 } rvm_data;
 
 typedef rvm_data* rvm_t;
@@ -55,3 +54,4 @@ typedef struct
 
 typedef int trans_t;
 
+extern map<string, int> mapped_segments;
