@@ -182,6 +182,10 @@ void rvm_destroy(rvm_t rvm, const char *segname)
 	operator delete(it->second.address);
 	rvm->segment_map.erase(it);
 	mapped_segments.erase(temp);
+	string cmd = "rm " + rvm->path + "/" + temp;
+	system(cmd.c_str());
+	cmd = cmd + ".log";
+	system(cmd.c_str());
 }
 
 trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases)
@@ -287,45 +291,66 @@ void rvm_commit_trans(trans_t tid)
  
  	// What happens if a segment has already been unmapped?
 
-	// Mark all segments unmapped?
-	string log_file;
-	int file;
-	trans_data trans = trans_map[tid];						
+
+						
+	
+	// for(it_seg = trans.segments.begin(); it_seg != trans.segments.end(); it_seg++)
+	// {
+	// 	//cout<<trans.segments[it_seg->first]->address<<endl;
+	// 	log_file = it->second->segname + ".log";
+	// 	file = open(log_file.c_str(), O_RDWR | O_CREAT, 0755);
+	// 	if(file == -1)
+	// 	{
+	// 		PRINT_DEBUG("Error opening log file");
+	// 		continue;
+	// 	}
+	// 	lseek(file, 0, SEEK_END);
+
+	// 	// now go through the undo_records - store the offset, size and current segment value in the log file. also free the undo records
+
+		
+	// 	trans.segments[it_seg->first]->being_used = 0;		// Indicate that the segment is no longer being used
+	// 	close(file);
+	// }
+
+	// Remove and free undo records
+	string path = trans_map[tid].rvm->path;
+	map<void*, list<undo_record_t> >::iterator it;
+	void *segbase;
+	undo_record_t undo_record;
 	map<void*, segment_t*>::iterator it_seg;
-	for(it_seg = trans.segments.begin(); it_seg != trans.segments.end(); it_seg++)
+	string segname;
+	string log_file_path;
+	int log_file;
+	int result;
+	for(it = trans_map[tid].undo_records.begin(); it != trans_map[tid].undo_records.end(); it++)
 	{
-		//cout<<trans.segments[it_seg->first]->address<<endl;
-		log_file = it->second->segname + ".log";
-		file = open(log_file.c_str(), O_RDWR | O_CREAT, 0755);
-		if(file == -1)
+		segbase = it->first;
+		it_seg = trans[tid].segments.find(segbase);
+		segname = it_seg->second->segname;
+		log_file_path = path + "/" + segname;
+		log_file = open(log_file_path.c_str(), O_RDWR | O_CREAT, 0755);
+		if(log_file == -1)
 		{
 			PRINT_DEBUG("Error opening log file");
 			continue;
 		}
-		lseek(file, 0, SEEK_END);
+		lseek(log_file, 0, SEEK_END);
 
-		// now go through the undo_records - store the offset, size and current segment value in the log file. also free the undo records
-
-		
-		trans.segments[it_seg->first]->being_used = 0;		// Indicate that the segment is no longer being used
-		close(file);
-	}
-
-	// Remove and free undo records
-	map<void*, list<undo_record_t> >::iterator it;
-	void *segbase;
-	undo_record_t undo_record;
-	for(it = trans_map[tid].undo_records.begin(); it != trans_map[tid].undo_records.end(); it++)
-	{
-		segbase = it->first;
-		cout<<"segbase is "<<segbase;
-		while(!it->second.empty())
+		while(!it->second.empty())							// Going through the undo records
 		{			
-			undo_record = it->second.front();			
+			undo_record = it->second.front();
+			write(log_file, undo_record.offset, sizeof(int));
+			write(log_file, undo_record.size, sizeof(int));
+			write(log_file, it_seg->second.address + undo_record.offset, undo_record.size);
+
 			operator delete(undo_record.backup);
 			it->second.pop_front();
 		}
+		it_seg->second->being_used = 0;						// Marking the segment as no longer in use
+		trans_map[tid].segments.erase(it_seg);
 		trans_map[tid].undo_records.erase(it);
+		close(log_file);
 	}
 	// Remove transaction info
 	trans_map.erase(tid);
