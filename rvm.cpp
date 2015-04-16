@@ -56,7 +56,7 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 	}
 	int length = rvm->path.length() + strlen(segname) + 1;
 	char *file_path = new char(length);
-	char *log_file_path= new char(length + 4);
+	char *log_file_path = new char(length + 4);
 
 	strcpy(file_path, rvm->path.c_str());
 	strcat(file_path, "/");
@@ -178,6 +178,7 @@ void rvm_destroy(rvm_t rvm, const char *segname)
 		return;
 	}
 	// Erase the backing store also
+	// delete the file?
 	operator delete(it->second.address);
 	rvm->segment_map.erase(it);
 	mapped_segments.erase(temp);
@@ -240,6 +241,7 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases)
 	trans_map[trans_id] = trans;
 	return trans_id;
 }
+
 void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 {
 	PRINT_DEBUG("In about to modify");
@@ -268,6 +270,7 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 	trans_map[tid].undo_records[segbase].push_front(undo_record);
 	cout<<(char*)trans_map[tid].undo_records[segbase].front().backup<<endl;	
 }
+
 void rvm_commit_trans(trans_t tid)
 {
 	/*commit all changes that have been made within the specified transaction. 
@@ -286,26 +289,25 @@ void rvm_commit_trans(trans_t tid)
 
 	// Mark all segments unmapped?
 	string log_file;
-	char *temp_path;
 	int file;
 	trans_data trans = trans_map[tid];						
 	map<void*, segment_t*>::iterator it_seg;
 	for(it_seg = trans.segments.begin(); it_seg != trans.segments.end(); it_seg++)
 	{
 		//cout<<trans.segments[it_seg->first]->address<<endl;
-		log_file = it->second->segname;
-		temp_path = new char(log_file.length());
-		strcpy(temp_path, log_file.c_str());
-		file = open(temp_path, O_RDWR | O_CREAT, 0755);
+		log_file = it->second->segname + ".log";
+		file = open(log_file.c_str(), O_RDWR | O_CREAT, 0755);
 		if(file == -1)
 		{
 			PRINT_DEBUG("Error opening log file");
 			continue;
 		}
 		lseek(file, 0, SEEK_END);
+
+		// now go through the undo_records - store the offset, size and current segment value in the log file. also free the undo records
+
 		
 		trans.segments[it_seg->first]->being_used = 0;		// Indicate that the segment is no longer being used
-		delete temp_path;
 		close(file);
 	}
 
@@ -331,8 +333,6 @@ void rvm_commit_trans(trans_t tid)
 
 void rvm_abort_trans(trans_t tid)
 {
-	//Remove logs from files also
-
 	PRINT_DEBUG("In abort transaction");
 	if(trans_map.count(tid) == 0)							// Invalid tid
 	{
