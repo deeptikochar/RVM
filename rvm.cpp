@@ -54,6 +54,8 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 	// seek to that offset in segment file
 	// write(seg_file, value, size);
 	// operator delete(value);
+
+	// at the end, clear the log file
 }
 
 rvm_t rvm_init(const char *directory)
