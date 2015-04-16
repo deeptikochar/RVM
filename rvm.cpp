@@ -25,6 +25,37 @@ using namespace std;
 map<trans_t, trans_data> trans_map;
 map<string, int> mapped_segments;
 
+void apply_log_for segment(rvm_t rvm, string segname)
+{
+	string seg_file_path = rvm->path + "/" + segname;
+	string log_file_path = seg_file_path + ".log";
+	int seg_file, log_file;
+	int offset, size;
+	void *value;
+	seg_file = open(seg_file_path.c_str(), O_RDWR | O_CREAT, 0755);
+	if(seg_file == -1)
+	{
+		PRINT_DEBUG("Error opening segment file");
+		return;
+	}
+	log_file = open(log_file_path.c_str(), O_RDWR | O_CREAT, 0755);
+	if(log_file == -1)
+	{
+		close(seg_file);
+		PRINT_DEBUG("Error opening log file");
+		return;
+	}
+
+	// go through log file. For each of them do the following steps:
+	// read(log_file, offset, sizeof(int));
+	// read(log_file, size, sizeof(int));
+	// value = operator new(size);
+	// read(log_file, value, size);
+	// seek to that offset in segment file
+	// write(seg_file, value, size);
+	// operator delete(value);
+}
+
 rvm_t rvm_init(const char *directory)
 {
 	struct stat sb;
@@ -99,7 +130,7 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
     	return NULL;
     }
 
-    // Do we clear the log file?
+    // Do we truncate the log for this segment?
 
 	segment_t seg;
 	seg.segname = temp;
