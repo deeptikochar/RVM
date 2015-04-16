@@ -25,7 +25,7 @@ using namespace std;
 map<trans_t, trans_data> trans_map;
 map<string, int> mapped_segments;
 
-void apply_log_for segment(rvm_t rvm, string segname)
+void apply_log_for_segment(rvm_t rvm, string segname)
 {
 	string seg_file_path = rvm->path + "/" + segname;
 	string log_file_path = seg_file_path + ".log";
