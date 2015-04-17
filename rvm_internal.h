@@ -54,5 +54,3 @@ typedef struct
 } trans_data;
 
 typedef int trans_t;
-
-extern map<string, int> mapped_segments;

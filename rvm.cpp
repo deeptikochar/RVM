@@ -23,7 +23,6 @@ using namespace std;
 #define MAX_TRANS_ID 1000000
 
 map<trans_t, trans_data> trans_map;
-map<string, int> mapped_segments;
 
 void apply_log_for_segment(rvm_t rvm, string segname)
 {
@@ -86,7 +85,7 @@ rvm_t rvm_init(const char *directory)
 	string dir = directory;
 	if (stat(directory, &sb) == 0 && S_ISDIR(sb.st_mode))
 	{
-	    PRINT_DEBUG("DIRECTORY EXISTS. WHAT NOW?");	    
+	    // PRINT_DEBUG("DIRECTORY EXISTS. WHAT NOW?");	    
 	}
 	else
 	{
@@ -102,13 +101,8 @@ rvm_t rvm_init(const char *directory)
 
 void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 {
-
 	string temp = string(segname);
-	if(mapped_segments.find(temp)->second)					// The segment is already mapped - error
-	{
-		PRINT_DEBUG("Segment is already mapped");
-		return NULL;
-	}
+
 	int length = rvm->path.length() + strlen(segname) + 1;
 	char *file_path = new char(length);
 	apply_log_for_segment(rvm, temp);
@@ -159,7 +153,6 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
     }
     delete(file_path);
 	rvm->segment_map[temp] = seg;
-	mapped_segments[temp] = 1;
 
 	close(file);
 	// PRINT_DEBUG("EXITING MAP");
@@ -194,11 +187,10 @@ void rvm_unmap(rvm_t rvm, void *segbase)
 		return;
 	}
 	// Should the memory be freed?
-	PRINT_DEBUG("Unmapping the segment");
+	// PRINT_DEBUG("Unmapping the segment");
 
 	operator delete(it->second.address);
 	rvm->segment_map.erase(it);
-	mapped_segments[segname] = 0;
 
 	// what to do with log files?
 }
@@ -222,7 +214,6 @@ void rvm_destroy(rvm_t rvm, const char *segname)
 	// delete the file?
 	operator delete(it->second.address);
 	rvm->segment_map.erase(it);
-	mapped_segments.erase(temp);
 	string cmd = "rm " + rvm->path + "/" + temp;
 	system(cmd.c_str());
 	cmd = cmd + ".log";
@@ -313,7 +304,7 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 	memcpy(undo_record.backup, segbase + offset, size);
 	// cout<<"backup is "<<(char*)undo_record.backup<<endl;
 	trans_map[tid].undo_records[segbase].push_front(undo_record);
-	cout<<(char*)trans_map[tid].undo_records[segbase].front().backup<<endl;	
+	// cout<<(char*)trans_map[tid].undo_records[segbase].front().backup<<endl;	
 }
 
 void rvm_commit_trans(trans_t tid)
@@ -415,7 +406,7 @@ void rvm_abort_trans(trans_t tid)
 	{
 		// Check if this segment has been unmapped? If it has then?
 		segbase = it->first;
-		cout<<"segbase is "<<segbase;
+		// cout<<"segbase is "<<segbase;
 		while(!it->second.empty())
 		{			
 			undo_record = it->second.front();			
@@ -430,13 +421,13 @@ void rvm_abort_trans(trans_t tid)
 	map<void*, segment_t*>::iterator it_seg;
 	for(it_seg = trans.segments.begin(); it_seg != trans.segments.end(); it_seg++)
 	{
-		cout<<trans.segments[it_seg->first]->address<<endl;
+		// cout<<trans.segments[it_seg->first]->address<<endl;
 		trans.segments[it_seg->first]->being_used = 0;		// Indicate that the segment is no longer being used
 							
 	}
 	
 	trans_map.erase(tid);									// Remove transaction info
-	cout<<"Exiting abort transaction"<<endl;
+	// cout<<"Exiting abort transaction"<<endl;
 
 }
 
@@ -455,7 +446,7 @@ void rvm_truncate_log(rvm_t rvm)
         file_name = string(dirp->d_name);
         if(file_name.length() > 4 && file_name.compare(file_name.length()-4, 4, ".log") == 0)
         {
-        	cout<<file_name<<endl;
+        	//cout<<file_name<<endl;
         	apply_log_for_segment(rvm, file_name.substr(0, file_name.length()-4));
         }
     }
