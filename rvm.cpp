@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+
 using namespace std;
 
 #ifdef DEBUG
@@ -92,6 +93,14 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 
 	int length = rvm->path.length() + strlen(segname) + 1;
 	char *file_path = new char(length);
+
+	map<string, segment_t>::iterator it;
+	it = rvm->segment_map.find(temp);
+	if(it != rvm->segment_map.end())
+	{
+		if(it->second.is_mapped == 1)
+			return NULL;
+	}
 	apply_log_for_segment(rvm, temp);
 
 	strcpy(file_path, rvm->path.c_str());
