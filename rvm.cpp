@@ -47,6 +47,8 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 		return;
 	}
 	int file_size = lseek(log_file, 0, SEEK_END);
+	if(file_size <= 0)
+		return;
 	lseek(log_file, 0, 0);
 	while(lseek(log_file, 0, SEEK_CUR) < file_size)
 	{
@@ -61,6 +63,8 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 	close(seg_file);
 	close(log_file);
 	string cmd = "rm " + log_file_path;
+	system(cmd.c_str());
+	cmd = "touch " + log_file_path;
 	system(cmd.c_str());
 
 	// go through log file. For each of them do the following steps:
@@ -99,23 +103,22 @@ rvm_t rvm_init(const char *directory)
 void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
 {
 
-	string temp = segname;
-	if(mapped_segments.count(temp))					// The segment is already mapped - error
+	string temp = string(segname);
+	if(mapped_segments.find(temp)->second)					// The segment is already mapped - error
 	{
 		PRINT_DEBUG("Segment is already mapped");
 		return NULL;
 	}
 	int length = rvm->path.length() + strlen(segname) + 1;
 	char *file_path = new char(length);
-	char *log_file_path = new char(length + 4);
+	apply_log_for_segment(rvm, temp);
 
 	strcpy(file_path, rvm->path.c_str());
 	strcat(file_path, "/");
 	strcat(file_path, segname);
-	strcpy(log_file_path, file_path);
-	strcat(log_file_path, ".log");
 
-	int file, size, result, log_file;
+
+	int file, size, result;
 	file = open(file_path, O_RDWR | O_CREAT, 0755);
     if(file == -1)
     {   
@@ -129,7 +132,7 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
         PRINT_DEBUG("Error getting size");
         return NULL;
     }
-    cout<<size<<endl;
+
     if (size < size_to_create)						// Size of the segment is less than the size to be created. Extend it
     {
         lseek(file, size_to_create - 1, SEEK_SET);
@@ -141,38 +144,25 @@ void *rvm_map(rvm_t rvm, const char *segname, int size_to_create)
         }           
     }
 
-    log_file = open(log_file_path, O_RDWR | O_CREAT, 0755);		// Create log file
-    if(log_file == -1)
-    {
-    	close(file);
-    	close(log_file);
-    	PRINT_DEBUG("Error creating log file");
-    	return NULL;
-    }
-
-    // Do we truncate the log for this segment?
-
 	segment_t seg;
 	seg.segname = temp;
 	seg.size = size_to_create;
 	seg.is_mapped = 1;
 	seg.address = operator new(size_to_create);
-	lseek(file, 0, SEEK_SET);     
+	lseek(file, 0, 0);     
     result = read(file, seg.address, size_to_create);  
     if(result == -1)
     {
     	PRINT_DEBUG("Error reading file");
     	close(file);
-    	close(log_file);
     	return NULL;
     }
-
+    delete(file_path);
 	rvm->segment_map[temp] = seg;
 	mapped_segments[temp] = 1;
 
 	close(file);
-	close(log_file);
-	PRINT_DEBUG("EXITING MAP");
+	// PRINT_DEBUG("EXITING MAP");
 	return rvm->segment_map[temp].address;
 }
 
@@ -299,7 +289,7 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases)
 
 void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 {
-	PRINT_DEBUG("In about to modify");
+	// PRINT_DEBUG("In about to modify");
 	if(trans_map.count(tid) == 0)							// Invalid tid
 	{
 		PRINT_DEBUG("Invalid transaction id");
@@ -373,13 +363,13 @@ void rvm_commit_trans(trans_t tid)
 	string segname;
 	string log_file_path;
 	int log_file;
-	int result;
+
 	for(it = trans_map[tid].undo_records.begin(); it != trans_map[tid].undo_records.end(); it++)
 	{
 		segbase = it->first;
 		it_seg = trans_map[tid].segments.find(segbase);
 		segname = it_seg->second->segname;
-		log_file_path = path + "/" + segname;
+		log_file_path = path + "/" + segname + ".log";
 		log_file = open(log_file_path.c_str(), O_RDWR | O_CREAT, 0755);
 		if(log_file == -1)
 		{
@@ -391,9 +381,11 @@ void rvm_commit_trans(trans_t tid)
 		while(!it->second.empty())							// Going through the undo records
 		{			
 			undo_record = it->second.front();
-			write(log_file, &undo_record.offset, sizeof(int));
-			write(log_file, &undo_record.size, sizeof(int));
+			// cout<<"Offset is "<<undo_record.offset<<endl;
+			write(log_file, &(undo_record.offset), sizeof(int));
+			write(log_file, &(undo_record.size), sizeof(int));
 			write(log_file, it_seg->second->address + undo_record.offset, undo_record.size);
+			// cout<<"Logging part of "<<(char*)it_seg->second->address<<endl;
 
 			operator delete(undo_record.backup);
 			it->second.pop_front();
@@ -470,43 +462,55 @@ void rvm_truncate_log(rvm_t rvm)
     closedir(dp);
 }
 
-int main()
-{
-	rvm_t rvm = rvm_init("hi");
-	// cout<<"RVM INITIALIZED:"<<rvm->path<<endl;
-	// char *seg_ch = (char*) rvm_map(rvm, "hi1", 200);
-	// cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
-	// // printf("%p\n", seg_ch);
-	// // rvm->segment_map["hi1"].is_mapped = 0;
-	// seg_ch = (char*) rvm_map(rvm, "hi1", 1000);
+// int main()
+// {
+// 	rvm_t rvm = rvm_init("hi");
+// 	// cout<<"RVM INITIALIZED:"<<rvm->path<<endl;
+// 	// char *seg_ch = (char*) rvm_map(rvm, "hi1", 200);
 // 	// cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
-// 	// printf("%p\n", seg_ch);
-// 	// int *seg_int = (int*) rvm_map(rvm, "hi2", 200);
-// 	// float *seg_fl = (float*) rvm_map(rvm, "hi3", 300);
-// 	// rvm_unmap(rvm, seg_ch);
-// 	// seg_ch = (char*) rvm_map(rvm, "hi1", 100);
-// 	// printf("%p\n", seg_ch);
-// 	// rvm_destroy(rvm, "hi1");
-// 	// seg_ch = (char*) rvm_map(rvm, "hi1", 100);
-// 	// printf("%p\n", seg_ch);
+// 	// // printf("%p\n", seg_ch);
+// 	// // rvm->segment_map["hi1"].is_mapped = 0;
+// 	// seg_ch = (char*) rvm_map(rvm, "hi1", 1000);
+// // 	// cout<<rvm->segment_map["hi1"].address<<"\t"<<rvm->segment_map["hi1"].size<<"\t"<<rvm->segment_map["hi1"].is_mapped<<endl;
+// // 	// printf("%p\n", seg_ch);
+// // 	// int *seg_int = (int*) rvm_map(rvm, "hi2", 200);
+// // 	// float *seg_fl = (float*) rvm_map(rvm, "hi3", 300);
+// // 	// rvm_unmap(rvm, seg_ch);
+// // 	// seg_ch = (char*) rvm_map(rvm, "hi1", 100);
+// // 	// printf("%p\n", seg_ch);
+// // 	// rvm_destroy(rvm, "hi1");
+// // 	// seg_ch = (char*) rvm_map(rvm, "hi1", 100);
+// // 	// printf("%p\n", seg_ch);
 
-	char *seg_tr[3];
-	seg_tr[0] = (char*) rvm_map(rvm, "SEG0", 100);
-	seg_tr[1] = (char*) rvm_map(rvm, "SEG1", 200);
-	seg_tr[2] = (char*) rvm_map(rvm, "SEG2", 300);
-	printf("Segments %p , %p , %p \n", (void*) seg_tr[0], (void*) seg_tr[1], (void*) seg_tr[2]);
-	trans_t tid = rvm_begin_trans(rvm, 3, (void**) seg_tr);
-	cout<<tid<<endl;
-// 	strcpy(seg_tr[0], "abcde");
-// 	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
-// 	rvm_about_to_modify(tid, seg_tr[0], 1, 4);
-// 	strcpy(seg_tr[0], "blahblah");
-// 	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
-// 	rvm_commit_trans(tid);
-// 	// cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
-// 	cout<<"Transaction "<<trans_map.count(tid)<<endl;
-// 	trans_t tid2 = rvm_begin_trans(rvm, 2, (void**) seg_tr);	
-// 	cout<<tid2<<endl;
+// 	char *seg_tr[3];
+// 	seg_tr[0] = (char*) rvm_map(rvm, "SEG0", 100);
+// 	trans_t tid = rvm_begin_trans(rvm, 1, (void**) seg_tr);
+// 	rvm_about_to_modify(tid, seg_tr[0],0,40);
+	
+// 	strcpy(seg_tr[0],"pohhh");
+// 	cout<<seg_tr[0]<<endl;
+// 	rvm_abort_trans(tid);
+// 	cout<<seg_tr[0]<<endl;
+// 	rvm_unmap(rvm, seg_tr[0]);
 
-	return 0;
-}
+// 	seg_tr[1] = (char*) rvm_map(rvm, "SEG0", 100);
+// 	cout<<"print test after this\n";
+// 	cout<<seg_tr[1]<<endl;
+
+// 	// seg_tr[2] = (char*) rvm_map(rvm, "SEG2", 300);
+// 	// printf("Segments %p , %p , %p \n", (void*) seg_tr[0], (void*) seg_tr[1], (void*) seg_tr[2]);
+// 	// trans_t tid = rvm_begin_trans(rvm, 3, (void**) seg_tr);
+// 	cout<<tid<<endl;
+// // 	strcpy(seg_tr[0], "abcde");
+// // 	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+// // 	rvm_about_to_modify(tid, seg_tr[0], 1, 4);
+// // 	strcpy(seg_tr[0], "blahblah");
+// // 	cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+// // 	rvm_commit_trans(tid);
+// // 	// cout<<"seg_tr[0] is "<<seg_tr[0]<<endl;
+// // 	cout<<"Transaction "<<trans_map.count(tid)<<endl;
+// // 	trans_t tid2 = rvm_begin_trans(rvm, 2, (void**) seg_tr);	
+// // 	cout<<tid2<<endl;
+
+// 	return 0;
+// }
