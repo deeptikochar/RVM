@@ -46,8 +46,9 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 		PRINT_DEBUG("Error opening log file");
 		return;
 	}
-
-	while(//not end of file)
+	int file_size = lseek(log_file, 0, SEEK_END);
+	lseek(log_file, 0, 0);
+	while(lseek(log_file, 0, SEEK_CUR) < file_size)
 	{
 		read(log_file, &offset, size_of_int));
 		read(log_file, &size, size_of_int);
@@ -448,7 +449,21 @@ void rvm_abort_trans(trans_t tid)
 }
 void rvm_truncate_log(rvm_t rvm)
 {
-	
+	DIR *dp;
+    struct dirent *dirp;
+    string dir = "p";
+    if((dp = opendir(dir.c_str())) == NULL) {
+        cout << "Error(" << errno << ") opening " << dir << endl;
+        return errno;
+    }
+    string file_name;
+    while ((dirp = readdir(dp)) != NULL) {
+    // files.push_back(string(dirp->d_name));
+        file_name = string(dirp->d_name);
+        if(file_name.length() > 4 && file_name.compare(file_name.length()-4, 4, ".log") == 0)
+             cout<<dirp->d_name<<endl;
+    }
+    closedir(dp);
 }
 
 int main()
