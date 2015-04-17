@@ -7,6 +7,7 @@ using namespace std;
 
 typedef struct segment
 {
+	string segname;
 	void *address;
 	int size;
 	int is_mapped;

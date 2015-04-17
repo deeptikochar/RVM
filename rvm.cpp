@@ -9,7 +9,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <fcntl.h>
-
+#include <dirent.h>
 using namespace std;
 
 #define DEBUG 1
@@ -50,10 +50,10 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 	lseek(log_file, 0, 0);
 	while(lseek(log_file, 0, SEEK_CUR) < file_size)
 	{
-		read(log_file, &offset, size_of_int));
+		read(log_file, &offset, size_of_int);
 		read(log_file, &size, size_of_int);
 		value = operator new(size);
-		read(log_file, data, size);
+		read(log_file, value, size);
 		lseek(seg_file, offset, 0);
 		write(seg_file, value, size);
 		operator delete(value);
@@ -325,7 +325,7 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 	trans_map[tid].undo_records[segbase].push_front(undo_record);
 	cout<<(char*)trans_map[tid].undo_records[segbase].front().backup<<endl;	
 }
-/
+
 void rvm_commit_trans(trans_t tid)
 {
 	/*commit all changes that have been made within the specified transaction. 
@@ -377,7 +377,7 @@ void rvm_commit_trans(trans_t tid)
 	for(it = trans_map[tid].undo_records.begin(); it != trans_map[tid].undo_records.end(); it++)
 	{
 		segbase = it->first;
-		it_seg = trans[tid].segments.find(segbase);
+		it_seg = trans_map[tid].segments.find(segbase);
 		segname = it_seg->second->segname;
 		log_file_path = path + "/" + segname;
 		log_file = open(log_file_path.c_str(), O_RDWR | O_CREAT, 0755);
@@ -393,7 +393,7 @@ void rvm_commit_trans(trans_t tid)
 			undo_record = it->second.front();
 			write(log_file, &undo_record.offset, sizeof(int));
 			write(log_file, &undo_record.size, sizeof(int));
-			write(log_file, it_seg->second.address + undo_record.offset, undo_record.size);
+			write(log_file, it_seg->second->address + undo_record.offset, undo_record.size);
 
 			operator delete(undo_record.backup);
 			it->second.pop_front();
@@ -447,21 +447,25 @@ void rvm_abort_trans(trans_t tid)
 	cout<<"Exiting abort transaction"<<endl;
 
 }
+
+
 void rvm_truncate_log(rvm_t rvm)
 {
 	DIR *dp;
     struct dirent *dirp;
-    string dir = "p";
-    if((dp = opendir(dir.c_str())) == NULL) {
-        cout << "Error(" << errno << ") opening " << dir << endl;
-        return errno;
+
+    if((dp = opendir(rvm->path.c_str())) == NULL) {
+        return;
     }
     string file_name;
-    while ((dirp = readdir(dp)) != NULL) {
-    // files.push_back(string(dirp->d_name));
+    while ((dirp = readdir(dp)) != NULL) 
+    {
         file_name = string(dirp->d_name);
         if(file_name.length() > 4 && file_name.compare(file_name.length()-4, 4, ".log") == 0)
-             cout<<dirp->d_name<<endl;
+        {
+        	cout<<file_name<<endl;
+        	apply_log_for_segment(rvm, file_name.substr(0, file_name.length()-4));
+        }
     }
     closedir(dp);
 }
