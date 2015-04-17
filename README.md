@@ -4,9 +4,6 @@ Team members
 *Deepti Kochar
 *Aditya Kadur  
 
-o	How you use logfiles to accomplish persistency plus transaction semantics.
-o	What goes in them? How do the files get cleaned up, so that they do not expand indefinitely?
-
 COMPILATION INSTRUCTIONS :
 
 To compile the library, type   make
