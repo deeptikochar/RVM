@@ -32,6 +32,7 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 	int seg_file, log_file;
 	int offset, size;
 	void *value;
+	int size_of_int = sizeof(int);
 	seg_file = open(seg_file_path.c_str(), O_RDWR | O_CREAT, 0755);
 	if(seg_file == -1)
 	{
@@ -46,6 +47,21 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 		return;
 	}
 
+	while(//not end of file)
+	{
+		read(log_file, &offset, size_of_int));
+		read(log_file, &size, size_of_int);
+		value = operator new(size);
+		read(log_file, data, size);
+		lseek(seg_file, offset, 0);
+		write(seg_file, value, size);
+		operator delete(value);
+	}
+	close(seg_file);
+	close(log_file);
+	string cmd = "rm " + log_file_path;
+	system(cmd.c_str());
+
 	// go through log file. For each of them do the following steps:
 	// read(log_file, offset, sizeof(int));
 	// read(log_file, size, sizeof(int));
@@ -56,6 +72,7 @@ void apply_log_for_segment(rvm_t rvm, string segname)
 	// operator delete(value);
 
 	// at the end, clear the log file
+
 }
 
 rvm_t rvm_init(const char *directory)
@@ -307,7 +324,7 @@ void rvm_about_to_modify(trans_t tid, void *segbase, int offset, int size)
 	trans_map[tid].undo_records[segbase].push_front(undo_record);
 	cout<<(char*)trans_map[tid].undo_records[segbase].front().backup<<endl;	
 }
-
+/
 void rvm_commit_trans(trans_t tid)
 {
 	/*commit all changes that have been made within the specified transaction. 
@@ -373,8 +390,8 @@ void rvm_commit_trans(trans_t tid)
 		while(!it->second.empty())							// Going through the undo records
 		{			
 			undo_record = it->second.front();
-			write(log_file, undo_record.offset, sizeof(int));
-			write(log_file, undo_record.size, sizeof(int));
+			write(log_file, &undo_record.offset, sizeof(int));
+			write(log_file, &undo_record.size, sizeof(int));
 			write(log_file, it_seg->second.address + undo_record.offset, undo_record.size);
 
 			operator delete(undo_record.backup);
@@ -429,7 +446,10 @@ void rvm_abort_trans(trans_t tid)
 	cout<<"Exiting abort transaction"<<endl;
 
 }
-void rvm_truncate_log(rvm_t rvm);
+void rvm_truncate_log(rvm_t rvm)
+{
+	
+}
 
 int main()
 {
